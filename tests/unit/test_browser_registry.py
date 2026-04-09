@@ -1,5 +1,6 @@
 import pytest
 from DrissionPage import errors as drission_errors
+from DrissionPage._functions.settings import Settings as drission_settings
 
 from drissionpage_mcp.config import BrowserConfig
 from drissionpage_mcp.adapters.drission_browser import DrissionBrowserAdapter
@@ -129,12 +130,23 @@ class NoTabBrowser(FakeBrowser):
 
 class MissingTabBrowser(FakeBrowser):
     def get_tab(self, tab_id: str) -> FakeTab:
-        raise drission_errors.TargetNotFoundError(tab_id)
+        raise RuntimeError(
+            drission_settings._lang.join(
+                drission_settings._lang.NO_SUCH_TAB,
+                ARG=tab_id,
+                ALL_TABS=list(self._tabs),
+            )
+        )
 
 
 class DisconnectedBrowser(FakeBrowser):
     def get_tab(self, tab_id: str) -> FakeTab:
         raise drission_errors.PageDisconnectedError("browser disconnected")
+
+
+class RuntimeFailureBrowser(FakeBrowser):
+    def get_tab(self, tab_id: str) -> FakeTab:
+        raise RuntimeError("browser runtime failure")
 
 
 class CloseFailureBrowser(FakeBrowser):
@@ -182,6 +194,13 @@ def test_browser_adapter_disconnected_browser_error_is_not_mislabeled_as_missing
     adapter = DrissionBrowserAdapter(DisconnectedBrowser(), "ephemeral")
 
     with pytest.raises(drission_errors.PageDisconnectedError):
+        adapter.get_page("tab-1")
+
+
+def test_browser_adapter_unrelated_runtime_error_is_not_mislabeled_as_missing_tab() -> None:
+    adapter = DrissionBrowserAdapter(RuntimeFailureBrowser(), "ephemeral")
+
+    with pytest.raises(RuntimeError, match="browser runtime failure"):
         adapter.get_page("tab-1")
 
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from DrissionPage import Chromium, ChromiumOptions
 from DrissionPage import errors as drission_errors
+from DrissionPage._functions.settings import Settings as drission_settings
 
 from drissionpage_mcp.config import BrowserConfig, SafetyConfig
 from drissionpage_mcp.errors import ErrorCode, ToolError
@@ -67,11 +68,21 @@ class DrissionBrowserAdapter:
             context={"tab_id": tab_id},
         )
 
+    def _is_missing_tab_error(self, error: Exception) -> bool:
+        if isinstance(error, (drission_errors.TargetNotFoundError, KeyError, IndexError)):
+            return True
+        if not isinstance(error, RuntimeError):
+            return False
+
+        message = str(error)
+        no_such_tab_text = str(getattr(drission_settings._lang, "NO_SUCH_TAB", "")).strip()
+        return bool(no_such_tab_text) and no_such_tab_text in message
+
     def _select_tab(self, tab_id: str | None = None) -> Any:
         try:
             tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
         except Exception as error:
-            if isinstance(error, (drission_errors.TargetNotFoundError, KeyError, IndexError)):
+            if self._is_missing_tab_error(error):
                 raise self._tab_not_found(tab_id) from error
             raise
         if tab is None:
@@ -96,7 +107,7 @@ class DrissionBrowserAdapter:
         try:
             tab = self._browser.latest_tab
         except Exception as error:
-            if isinstance(error, (drission_errors.TargetNotFoundError, KeyError, IndexError)):
+            if self._is_missing_tab_error(error):
                 return None
             raise
         return str(getattr(tab, "tab_id", "")) or None
