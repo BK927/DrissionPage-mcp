@@ -63,7 +63,16 @@ class BrowserRegistry:
             )
 
         session = self.get_session(session_id)
-        session.adapter.close()
+        try:
+            session.adapter.close()
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.BROWSER_CLOSE_FAILED,
+                message=f"Unable to close session '{session_id}': {error}",
+                context={"session_id": session_id},
+            ) from error
         del self._sessions[session_id]
 
     def all_sessions(self) -> list[BrowserSession]:

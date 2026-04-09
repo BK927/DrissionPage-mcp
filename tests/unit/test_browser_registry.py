@@ -1,4 +1,5 @@
 import pytest
+from DrissionPage import errors as drission_errors
 
 from drissionpage_mcp.config import BrowserConfig
 from drissionpage_mcp.adapters.drission_browser import DrissionBrowserAdapter
@@ -11,8 +12,11 @@ class FakeAdapter:
     def __init__(self, label: str) -> None:
         self.label = label
         self.closed = False
+        self.close_error: Exception | None = None
 
     def close(self) -> None:
+        if self.close_error is not None:
+            raise self.close_error
         self.closed = True
 
 
@@ -66,6 +70,19 @@ def test_registry_close_session_closes_ephemeral_and_removes_it() -> None:
     assert error_info.value.code is ErrorCode.SESSION_NOT_FOUND
 
 
+def test_registry_close_session_normalizes_close_failures() -> None:
+    registry = BrowserRegistry(lambda mode: FakeAdapter(mode), BrowserConfig())
+    session = registry.create_session("ephemeral")
+    session.adapter.close_error = RuntimeError("close boom")
+
+    with pytest.raises(ToolError) as error_info:
+        registry.close_session(session.session_id)
+
+    assert error_info.value.code is ErrorCode.BROWSER_CLOSE_FAILED
+    assert error_info.value.context == {"session_id": session.session_id}
+    assert registry.get_session(session.session_id) is session
+
+
 def test_registry_all_sessions_creates_default_when_persistent_startup_enabled() -> None:
     registry = BrowserRegistry(lambda mode: FakeAdapter(mode), BrowserConfig())
 
@@ -101,6 +118,30 @@ class FakeBrowser:
         return None
 
 
+class NoTabBrowser(FakeBrowser):
+    def __init__(self) -> None:
+        self._tabs = {}
+
+    @property
+    def latest_tab(self) -> None:
+        raise drission_errors.TargetNotFoundError("no tabs")
+
+
+class MissingTabBrowser(FakeBrowser):
+    def get_tab(self, tab_id: str) -> FakeTab:
+        raise drission_errors.TargetNotFoundError(tab_id)
+
+
+class DisconnectedBrowser(FakeBrowser):
+    def get_tab(self, tab_id: str) -> FakeTab:
+        raise drission_errors.PageDisconnectedError("browser disconnected")
+
+
+class CloseFailureBrowser(FakeBrowser):
+    def quit(self) -> None:
+        raise RuntimeError("quit failed")
+
+
 def test_browser_adapter_get_page_returns_functional_wrapper_without_task4_module() -> None:
     adapter = DrissionBrowserAdapter(FakeBrowser(), "ephemeral")
 
@@ -113,13 +154,45 @@ def test_browser_adapter_get_page_returns_functional_wrapper_without_task4_modul
 
 
 def test_browser_adapter_normalizes_missing_tab_errors() -> None:
-    adapter = DrissionBrowserAdapter(FakeBrowser(), "ephemeral")
+    adapter = DrissionBrowserAdapter(MissingTabBrowser(), "ephemeral")
 
     with pytest.raises(ToolError) as error_info:
         adapter.get_page("missing")
 
     assert error_info.value.code is ErrorCode.TAB_NOT_FOUND
     assert error_info.value.context == {"tab_id": "missing"}
+
+
+def test_browser_adapter_current_tab_id_returns_none_when_no_tabs_exist() -> None:
+    adapter = DrissionBrowserAdapter(NoTabBrowser(), "ephemeral")
+
+    assert adapter.current_tab_id() is None
+
+
+def test_browser_adapter_state_tolerates_no_tabs() -> None:
+    adapter = DrissionBrowserAdapter(NoTabBrowser(), "ephemeral")
+
+    state = adapter.state("session-1")
+
+    assert state.current_tab_id is None
+    assert state.tabs == []
+
+
+def test_browser_adapter_disconnected_browser_error_is_not_mislabeled_as_missing_tab() -> None:
+    adapter = DrissionBrowserAdapter(DisconnectedBrowser(), "ephemeral")
+
+    with pytest.raises(drission_errors.PageDisconnectedError):
+        adapter.get_page("tab-1")
+
+
+def test_browser_adapter_close_normalizes_failures() -> None:
+    adapter = DrissionBrowserAdapter(CloseFailureBrowser(), "ephemeral")
+
+    with pytest.raises(ToolError) as error_info:
+        adapter.close()
+
+    assert error_info.value.code is ErrorCode.BROWSER_CLOSE_FAILED
+    assert error_info.value.context == {}
 
 
 class FakeChromiumOptions:

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from DrissionPage import Chromium, ChromiumOptions
+from DrissionPage import errors as drission_errors
 
 from drissionpage_mcp.config import BrowserConfig, SafetyConfig
 from drissionpage_mcp.errors import ErrorCode, ToolError
@@ -48,7 +49,15 @@ class DrissionBrowserAdapter:
         return cls(browser, mode)
 
     def close(self) -> None:
-        self._browser.quit()
+        try:
+            self._browser.quit()
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.BROWSER_CLOSE_FAILED,
+                message=f"Unable to close Chromium: {error}",
+            ) from error
 
     def _tab_not_found(self, tab_id: str | None) -> ToolError:
         label = "current tab" if tab_id is None else f"tab '{tab_id}'"
@@ -62,7 +71,9 @@ class DrissionBrowserAdapter:
         try:
             tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
         except Exception as error:
-            raise self._tab_not_found(tab_id) from error
+            if isinstance(error, (drission_errors.TargetNotFoundError, KeyError, IndexError)):
+                raise self._tab_not_found(tab_id) from error
+            raise
         if tab is None:
             raise self._tab_not_found(tab_id)
         return tab
@@ -82,7 +93,12 @@ class DrissionBrowserAdapter:
         return DrissionPageAdapter(tab)
 
     def current_tab_id(self) -> str | None:
-        tab = self._browser.latest_tab
+        try:
+            tab = self._browser.latest_tab
+        except Exception as error:
+            if isinstance(error, (drission_errors.TargetNotFoundError, KeyError, IndexError)):
+                return None
+            raise
         return str(getattr(tab, "tab_id", "")) or None
 
     def state(self, session_id: str) -> BrowserState:
