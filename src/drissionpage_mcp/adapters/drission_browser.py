@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from DrissionPage import Chromium, ChromiumOptions
@@ -9,12 +10,11 @@ from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.models import BrowserState, TabInfo
 
 
-class _DrissionPageShim:
-    def __init__(self, page: Any) -> None:
-        self.raw_page = page
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.raw_page, name)
+@dataclass(slots=True)
+class _FallbackPageAdapter:
+    tab_id: str | None
+    title: str
+    url: str
 
 
 class DrissionBrowserAdapter:
@@ -31,6 +31,8 @@ class DrissionBrowserAdapter:
     ) -> DrissionBrowserAdapter:
         try:
             options = ChromiumOptions(read_file=False)
+            # Avoid reusing the default DevTools endpoint across logical sessions.
+            options.auto_port()
             if browser_config.browser_path:
                 options.set_browser_path(browser_config.browser_path)
             options.set_download_path(safety_config.download_dir)
@@ -48,14 +50,35 @@ class DrissionBrowserAdapter:
     def close(self) -> None:
         self._browser.quit()
 
+    def _tab_not_found(self, tab_id: str | None) -> ToolError:
+        label = "current tab" if tab_id is None else f"tab '{tab_id}'"
+        return ToolError(
+            code=ErrorCode.TAB_NOT_FOUND,
+            message=f"Unable to resolve {label}.",
+            context={"tab_id": tab_id},
+        )
+
+    def _select_tab(self, tab_id: str | None = None) -> Any:
+        try:
+            tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
+        except Exception as error:
+            raise self._tab_not_found(tab_id) from error
+        if tab is None:
+            raise self._tab_not_found(tab_id)
+        return tab
+
     def get_page(self, tab_id: str | None = None) -> Any:
-        tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
+        tab = self._select_tab(tab_id)
         try:
             from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
         except ModuleNotFoundError as error:
             if error.name != "drissionpage_mcp.adapters.drission_page":
                 raise
-            return _DrissionPageShim(tab)
+            return _FallbackPageAdapter(
+                tab_id=str(getattr(tab, "tab_id", "")) or None,
+                title=str(getattr(tab, "title", "")),
+                url=str(getattr(tab, "url", "")),
+            )
         return DrissionPageAdapter(tab)
 
     def current_tab_id(self) -> str | None:
