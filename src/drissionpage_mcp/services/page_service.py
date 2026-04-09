@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
 
 from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
 from drissionpage_mcp.models import ToolResult
@@ -14,11 +13,8 @@ class PageService:
         self,
         session: BrowserSession,
         tab_id: str | None = None,
-    ) -> DrissionPageAdapter | Any:
-        page = session.adapter.get_page(tab_id)
-        if all(hasattr(page, name) for name in ("navigate", "find_element", "wait_for_element")):
-            return page
-        return DrissionPageAdapter(page)
+    ) -> DrissionPageAdapter:
+        return session.adapter.get_page(tab_id)
 
     def _result(
         self,
@@ -44,7 +40,13 @@ class PageService:
         start = time.perf_counter()
         page = self._page(session, tab_id)
         page.navigate(url)
-        return self._result(start, "Navigated successfully.", session, tab_id=tab_id, url=url)
+        return self._result(
+            start,
+            "Navigated successfully.",
+            session,
+            tab_id=tab_id,
+            url=page.get_url(),
+        )
 
     def refresh(self, session: BrowserSession, tab_id: str | None = None) -> ToolResult:
         start = time.perf_counter()

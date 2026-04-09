@@ -10,6 +10,18 @@ class DrissionPageAdapter:
     def __init__(self, page: object) -> None:
         self._page = page
 
+    def _lookup(self, selector: str, *, timeout: float = 0) -> object | None:
+        element = self._page.ele(selector, timeout=timeout)
+        return element if element else None
+
+    def _element_not_found(self, selector: str) -> ToolError:
+        return ToolError(
+            code=ErrorCode.ELEMENT_NOT_FOUND,
+            message=f"No element matched selector: {selector}",
+            retryable=True,
+            context={"selector": selector},
+        )
+
     @property
     def tab_id(self) -> str | None:
         return str(getattr(self._page, "tab_id", "")) or None
@@ -23,7 +35,17 @@ class DrissionPageAdapter:
         return self.get_url()
 
     def navigate(self, url: str) -> None:
-        self._page.get(url)
+        try:
+            self._page.get(url)
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.NAVIGATION_FAILED,
+                message=f"Unable to navigate to '{url}': {error}",
+                retryable=True,
+                context={"url": url},
+            ) from error
 
     def refresh(self) -> None:
         self._page.refresh()
@@ -41,8 +63,7 @@ class DrissionPageAdapter:
         return str(getattr(self._page, "html", ""))
 
     def get_text(self) -> str:
-        body = self._page.ele("tag:body")
-        return "" if body is None else str(getattr(body, "text", ""))
+        return self.find_element("tag:body").text
 
     def screenshot(
         self,
@@ -50,26 +71,33 @@ class DrissionPageAdapter:
         name: str | None = None,
         full_page: bool = False,
     ) -> str:
-        return str(self._page.get_screenshot(path=path, name=name, full_page=full_page))
+        try:
+            return str(self._page.get_screenshot(path=path, name=name, full_page=full_page))
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.ACTION_TIMEOUT,
+                message=f"Unable to capture screenshot: {error}",
+                retryable=True,
+                context={"action": "screenshot", "path": path, "name": name, "full_page": full_page},
+            ) from error
 
     def find_element(self, selector: str) -> DrissionElementAdapter:
-        element = self._page.ele(selector)
+        element = self._lookup(selector)
         if element is None:
-            raise ToolError(
-                code=ErrorCode.ELEMENT_NOT_FOUND,
-                message=f"No element matched selector: {selector}",
-                retryable=True,
-                context={"selector": selector},
-            )
+            raise self._element_not_found(selector)
         return DrissionElementAdapter(element)
 
     def wait_for_element(self, selector: str, timeout_s: float) -> DrissionElementAdapter:
-        deadline = time.monotonic() + timeout_s
-        while time.monotonic() < deadline:
-            element = self._page.ele(selector)
+        deadline = time.monotonic() + max(timeout_s, 0)
+        while True:
+            element = self._lookup(selector, timeout=0)
             if element is not None:
                 return DrissionElementAdapter(element)
-            time.sleep(0.1)
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
         raise ToolError(
             code=ErrorCode.ACTION_TIMEOUT,
             message=f"Timed out waiting for selector: {selector}",
