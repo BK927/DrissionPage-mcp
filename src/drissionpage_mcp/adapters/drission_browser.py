@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from typing import Any
+
+from DrissionPage import Chromium, ChromiumOptions
+
+from drissionpage_mcp.config import BrowserConfig, SafetyConfig
+from drissionpage_mcp.errors import ErrorCode, ToolError
+from drissionpage_mcp.models import BrowserState, TabInfo
+
+
+class DrissionBrowserAdapter:
+    def __init__(self, browser: Chromium, mode: str) -> None:
+        self._browser = browser
+        self._mode = mode
+
+    @classmethod
+    def launch(
+        cls,
+        browser_config: BrowserConfig,
+        safety_config: SafetyConfig,
+        mode: str,
+    ) -> DrissionBrowserAdapter:
+        try:
+            options = ChromiumOptions(read_file=False)
+            if browser_config.browser_path:
+                options.set_browser_path(browser_config.browser_path)
+            options.set_download_path(safety_config.download_dir)
+            if browser_config.headless:
+                options.headless(True)
+            browser = Chromium(addr_or_opts=options)
+        except Exception as error:  # pragma: no cover
+            raise ToolError(
+                code=ErrorCode.BROWSER_LAUNCH_FAILED,
+                message=f"Unable to start Chromium: {error}",
+            ) from error
+
+        return cls(browser, mode)
+
+    def close(self) -> None:
+        self._browser.quit()
+
+    def get_page(self, tab_id: str | None = None) -> Any:
+        from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
+
+        tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
+        return DrissionPageAdapter(tab)
+
+    def current_tab_id(self) -> str | None:
+        tab = self._browser.latest_tab
+        return str(getattr(tab, "tab_id", "")) or None
+
+    def state(self, session_id: str) -> BrowserState:
+        tabs = [
+            TabInfo(
+                tab_id=str(getattr(tab, "tab_id", "")),
+                title=str(getattr(tab, "title", "")),
+                url=str(getattr(tab, "url", "")),
+            )
+            for tab in self._browser.get_tabs()
+        ]
+        return BrowserState(
+            session_id=session_id,
+            mode=self._mode,
+            current_tab_id=self.current_tab_id(),
+            tabs=tabs,
+        )
