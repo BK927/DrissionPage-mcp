@@ -40,6 +40,14 @@ def _tuple_from_value(value: Any) -> tuple[str, ...]:
     return (str(value),)
 
 
+def _strict_bool(value: Any, field_name: str, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise TypeError(f"{field_name} must be a boolean")
+
+
 def load_config(path: str | Path | None = None) -> ServerConfig:
     config_path = Path(path) if path is not None else Path("drissionpage_mcp.toml")
     if not config_path.exists():
@@ -51,17 +59,25 @@ def load_config(path: str | Path | None = None) -> ServerConfig:
 
     safety = SafetyConfig(
         mode=str(safety_raw.get("mode", "safe")),
-        allow_run_js=bool(safety_raw.get("allow_run_js", False)),
-        allow_browser_attach=bool(safety_raw.get("allow_browser_attach", False)),
-        allow_file_upload=bool(safety_raw.get("allow_file_upload", False)),
-        allow_download=bool(safety_raw.get("allow_download", True)),
+        allow_run_js=_strict_bool(safety_raw.get("allow_run_js"), "safety.allow_run_js", False),
+        allow_browser_attach=_strict_bool(
+            safety_raw.get("allow_browser_attach"), "safety.allow_browser_attach", False
+        ),
+        allow_file_upload=_strict_bool(
+            safety_raw.get("allow_file_upload"), "safety.allow_file_upload", False
+        ),
+        allow_download=_strict_bool(safety_raw.get("allow_download"), "safety.allow_download", True),
         allowed_domains=_tuple_from_value(safety_raw.get("allowed_domains")),
         download_dir=str(safety_raw.get("download_dir", "./downloads")),
         default_timeout_ms=int(safety_raw.get("default_timeout_ms", 10_000)),
     )
     browser = BrowserConfig(
-        persistent_on_startup=bool(browser_raw.get("persistent_on_startup", True)),
-        headless=bool(browser_raw.get("headless", False)),
+        persistent_on_startup=_strict_bool(
+            browser_raw.get("persistent_on_startup"),
+            "browser.persistent_on_startup",
+            True,
+        ),
+        headless=_strict_bool(browser_raw.get("headless"), "browser.headless", False),
         browser_path=browser_raw.get("browser_path"),
     )
     return ServerConfig(
