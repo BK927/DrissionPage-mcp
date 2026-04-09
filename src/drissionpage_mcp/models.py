@@ -37,5 +37,5 @@ class ToolResult:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         extra = payload.pop("data")
-        payload.update(extra)
-        return {key: value for key, value in payload.items() if value not in (None, {}, [])}
+        payload.update({key: value for key, value in extra.items() if key not in payload})
+        return {key: value for key, value in payload.items() if value is not None}

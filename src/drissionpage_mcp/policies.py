@@ -9,6 +9,9 @@ from drissionpage_mcp.errors import ErrorCode, ToolError
 class PolicyEngine:
     def __init__(self, config: SafetyConfig) -> None:
         self._config = config
+        self._allowed_domains = tuple(
+            domain.strip().lower() for domain in config.allowed_domains if domain.strip()
+        )
 
     def require_run_js_allowed(self) -> None:
         if not self._config.allow_run_js:
@@ -25,11 +28,11 @@ class PolicyEngine:
             )
 
     def require_url_allowed(self, url: str) -> None:
-        if not self._config.allowed_domains:
+        if not self._allowed_domains:
             return
 
         hostname = (urlparse(url).hostname or "").lower()
-        if hostname in self._config.allowed_domains:
+        if hostname in self._allowed_domains:
             return
 
         raise ToolError(
