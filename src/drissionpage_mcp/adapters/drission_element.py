@@ -9,7 +9,17 @@ class DrissionElementAdapter:
 
     @property
     def text(self) -> str:
-        return str(getattr(self._element, "text", ""))
+        try:
+            return str(getattr(self._element, "text", ""))
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.ACTION_TIMEOUT,
+                message=f"Unable to read element text: {error}",
+                retryable=True,
+                context={"action": "read_text"},
+            ) from error
 
     def click(self) -> None:
         try:

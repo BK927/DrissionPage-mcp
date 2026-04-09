@@ -166,6 +166,23 @@ class BrokenRawPage(FakeRawPage):
     ) -> str:
         raise RuntimeError("screenshot exploded")
 
+    def refresh(self) -> None:
+        raise RuntimeError("refresh exploded")
+
+    def back(self) -> None:
+        raise RuntimeError("back exploded")
+
+    def forward(self) -> None:
+        raise RuntimeError("forward exploded")
+
+
+class BrokenLookupPage(FakeRawPage):
+    def __init__(self) -> None:
+        super().__init__({})
+
+    def ele(self, selector: str, timeout: float | None = None):
+        raise RuntimeError(f"lookup exploded for {selector}")
+
 
 class BrokenRawElement:
     @property
@@ -180,6 +197,12 @@ class BrokenRawElement:
 
     def input(self, text: str) -> None:
         raise RuntimeError("type exploded")
+
+
+class BrokenReadElement:
+    @property
+    def text(self) -> str:
+        raise RuntimeError("text exploded")
 
 
 def test_page_service_navigate_reports_actual_url_and_metadata() -> None:
@@ -246,6 +269,16 @@ def test_drission_page_adapter_find_element_treats_falsey_none_element_as_missin
     assert error_info.value.context["selector"] == "#missing"
 
 
+def test_drission_page_adapter_lookup_wraps_raw_lookup_errors() -> None:
+    adapter = DrissionPageAdapter(BrokenLookupPage())
+
+    with pytest.raises(ToolError) as error_info:
+        adapter.find_element("#boom")
+
+    assert error_info.value.code == ErrorCode.ELEMENT_NOT_FOUND
+    assert error_info.value.context["selector"] == "#boom"
+
+
 def test_drission_page_adapter_wraps_navigation_errors() -> None:
     adapter = DrissionPageAdapter(BrokenRawPage())
 
@@ -265,6 +298,36 @@ def test_drission_page_adapter_wraps_screenshot_errors() -> None:
     assert error_info.value.code == ErrorCode.ACTION_TIMEOUT
     assert error_info.value.context["path"] == "shots"
     assert error_info.value.context["name"] == "page.png"
+
+
+def test_drission_page_adapter_wraps_refresh_errors() -> None:
+    adapter = DrissionPageAdapter(BrokenRawPage())
+
+    with pytest.raises(ToolError) as error_info:
+        adapter.refresh()
+
+    assert error_info.value.code == ErrorCode.NAVIGATION_FAILED
+    assert error_info.value.context["action"] == "refresh"
+
+
+def test_drission_page_adapter_wraps_back_errors() -> None:
+    adapter = DrissionPageAdapter(BrokenRawPage())
+
+    with pytest.raises(ToolError) as error_info:
+        adapter.go_back()
+
+    assert error_info.value.code == ErrorCode.NAVIGATION_FAILED
+    assert error_info.value.context["action"] == "back"
+
+
+def test_drission_page_adapter_wraps_forward_errors() -> None:
+    adapter = DrissionPageAdapter(BrokenRawPage())
+
+    with pytest.raises(ToolError) as error_info:
+        adapter.go_forward()
+
+    assert error_info.value.code == ErrorCode.NAVIGATION_FAILED
+    assert error_info.value.context["action"] == "forward"
 
 
 def test_drission_page_adapter_get_text_treats_falsey_body_as_missing() -> None:
@@ -308,6 +371,16 @@ def test_drission_element_adapter_wraps_click_errors() -> None:
 
     assert error_info.value.code == ErrorCode.ACTION_TIMEOUT
     assert error_info.value.context["action"] == "click"
+
+
+def test_drission_element_adapter_wraps_text_read_errors() -> None:
+    adapter = DrissionElementAdapter(BrokenReadElement())
+
+    with pytest.raises(ToolError) as error_info:
+        _ = adapter.text
+
+    assert error_info.value.code == ErrorCode.ACTION_TIMEOUT
+    assert error_info.value.context["action"] == "read_text"
 
 
 def test_drission_element_adapter_wraps_type_errors() -> None:

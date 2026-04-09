@@ -11,8 +11,26 @@ class DrissionPageAdapter:
         self._page = page
 
     def _lookup(self, selector: str, *, timeout: float = 0) -> object | None:
-        element = self._page.ele(selector, timeout=timeout)
+        try:
+            element = self._page.ele(selector, timeout=timeout)
+        except ToolError:
+            raise
+        except Exception as error:
+            raise ToolError(
+                code=ErrorCode.ELEMENT_NOT_FOUND,
+                message=f"Unable to resolve selector '{selector}': {error}",
+                retryable=True,
+                context={"selector": selector, "timeout_s": timeout},
+            ) from error
         return element if element else None
+
+    def _navigation_failed(self, action: str, error: Exception) -> ToolError:
+        return ToolError(
+            code=ErrorCode.NAVIGATION_FAILED,
+            message=f"Unable to {action} page: {error}",
+            retryable=True,
+            context={"action": action},
+        )
 
     def _element_not_found(self, selector: str) -> ToolError:
         return ToolError(
@@ -48,13 +66,28 @@ class DrissionPageAdapter:
             ) from error
 
     def refresh(self) -> None:
-        self._page.refresh()
+        try:
+            self._page.refresh()
+        except ToolError:
+            raise
+        except Exception as error:
+            raise self._navigation_failed("refresh", error) from error
 
     def go_back(self) -> None:
-        self._page.back()
+        try:
+            self._page.back()
+        except ToolError:
+            raise
+        except Exception as error:
+            raise self._navigation_failed("back", error) from error
 
     def go_forward(self) -> None:
-        self._page.forward()
+        try:
+            self._page.forward()
+        except ToolError:
+            raise
+        except Exception as error:
+            raise self._navigation_failed("forward", error) from error
 
     def get_url(self) -> str:
         return str(getattr(self._page, "url", ""))
