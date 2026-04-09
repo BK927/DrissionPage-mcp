@@ -9,6 +9,14 @@ from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.models import BrowserState, TabInfo
 
 
+class _DrissionPageShim:
+    def __init__(self, page: Any) -> None:
+        self.raw_page = page
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.raw_page, name)
+
+
 class DrissionBrowserAdapter:
     def __init__(self, browser: Chromium, mode: str) -> None:
         self._browser = browser
@@ -41,9 +49,13 @@ class DrissionBrowserAdapter:
         self._browser.quit()
 
     def get_page(self, tab_id: str | None = None) -> Any:
-        from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
-
         tab = self._browser.latest_tab if tab_id is None else self._browser.get_tab(tab_id)
+        try:
+            from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
+        except ModuleNotFoundError as error:
+            if error.name != "drissionpage_mcp.adapters.drission_page":
+                raise
+            return _DrissionPageShim(tab)
         return DrissionPageAdapter(tab)
 
     def current_tab_id(self) -> str | None:

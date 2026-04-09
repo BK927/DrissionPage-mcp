@@ -1,4 +1,5 @@
 from drissionpage_mcp.config import BrowserConfig
+from drissionpage_mcp.adapters.drission_browser import DrissionBrowserAdapter
 from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.services.browser_registry import BrowserRegistry
 
@@ -39,3 +40,38 @@ def test_registry_rejects_closing_default_session() -> None:
         assert error.code is ErrorCode.UNSUPPORTED_OPERATION
     else:
         raise AssertionError("Expected ToolError when closing default session")
+
+
+class FakeTab:
+    def __init__(self, tab_id: str, title: str, url: str) -> None:
+        self.tab_id = tab_id
+        self.title = title
+        self.url = url
+
+
+class FakeBrowser:
+    def __init__(self) -> None:
+        self.latest_tab = FakeTab("tab-1", "Latest", "https://example.com/latest")
+        self._tabs = {
+            "tab-1": self.latest_tab,
+            "tab-2": FakeTab("tab-2", "Other", "https://example.com/other"),
+        }
+
+    def get_tab(self, tab_id: str) -> FakeTab:
+        return self._tabs[tab_id]
+
+    def get_tabs(self) -> list[FakeTab]:
+        return list(self._tabs.values())
+
+    def quit(self) -> None:
+        return None
+
+
+def test_browser_adapter_get_page_returns_functional_wrapper_without_task4_module() -> None:
+    adapter = DrissionBrowserAdapter(FakeBrowser(), "ephemeral")
+
+    page = adapter.get_page("tab-2")
+
+    assert page.tab_id == "tab-2"
+    assert page.title == "Other"
+    assert page.url == "https://example.com/other"
