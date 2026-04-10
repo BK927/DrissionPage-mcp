@@ -202,38 +202,47 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
 
     @mcp.tool(name="session_create")
     def session_create(mode: str = "ephemeral") -> dict[str, Any]:
+        """Create a new browser session and return its session_id. Use mode='ephemeral' for a temporary session that is discarded on close, or mode='persistent' to reuse a named profile across calls."""
         return handlers["session_create"](mode)
 
     @mcp.tool(name="session_close")
     def session_close(session_id: str) -> dict[str, Any]:
+        """Close a non-default browser session identified by session_id, releasing its resources. The default session cannot be closed with this tool."""
         return handlers["session_close"](session_id)
 
     @mcp.tool(name="page_navigate")
     def page_navigate(url: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate the browser to the given URL and return the final URL after any redirects. The URL must be permitted by the server's safety policy."""
         return handlers["page_navigate"](url, session_id, tab_id)
 
     @mcp.tool(name="page_refresh")
     def page_refresh(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Reload the current page, equivalent to pressing F5. Use this to re-fetch content after a server-side change or to recover from a stale page state."""
         return handlers["page_refresh"](session_id, tab_id)
 
     @mcp.tool(name="page_go_back")
     def page_go_back(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate one step back in the browser's history, equivalent to clicking the Back button. Returns an error if there is no previous page."""
         return handlers["page_go_back"](session_id, tab_id)
 
     @mcp.tool(name="page_go_forward")
     def page_go_forward(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate one step forward in the browser's history, equivalent to clicking the Forward button. Returns an error if there is no next page."""
         return handlers["page_go_forward"](session_id, tab_id)
 
     @mcp.tool(name="page_get_url")
     def page_get_url(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the current URL of the active tab. Use this to confirm navigation completed or to capture the final URL after redirects."""
         return handlers["page_get_url"](session_id, tab_id)
 
     @mcp.tool(name="page_get_html")
     def page_get_html(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the full HTML source of the current page. Use this when you need the raw markup for parsing, scraping, or inspecting element structure."""
         return handlers["page_get_html"](session_id, tab_id)
 
     @mcp.tool(name="page_get_text")
     def page_get_text(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the visible text content of the current page, stripped of HTML tags. Prefer this over page_get_html when you only need readable text, not markup."""
         return handlers["page_get_text"](session_id, tab_id)
 
     @mcp.tool(name="page_screenshot")
@@ -244,14 +253,17 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
         file_name: str = "page.png",
         full_page: bool = False,
     ) -> dict[str, Any]:
+        """Capture a screenshot of the current page and save it to disk. Set full_page=True to capture the entire scrollable page rather than just the visible viewport."""
         return handlers["page_screenshot"](session_id, tab_id, output_path, file_name, full_page)
 
     @mcp.tool(name="element_find")
     def element_find(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Find a DOM element using a CSS selector and return its tag, text, attributes, and position. Use this to inspect an element before deciding whether to click or type into it."""
         return handlers["element_find"](selector, session_id, tab_id)
 
     @mcp.tool(name="element_click")
     def element_click(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Click the first element matching the given CSS selector. Use wait_for_element first if the element may not be present yet."""
         return handlers["element_click"](selector, session_id, tab_id)
 
     @mcp.tool(name="element_type")
@@ -262,6 +274,7 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
         tab_id: str | None = None,
         clear: bool = False,
     ) -> dict[str, Any]:
+        """Type text into the input or textarea element matching the CSS selector. Set clear=True to erase existing content before typing; defaults to appending."""
         return handlers["element_type"](selector, text, session_id, tab_id, clear)
 
     @mcp.tool(name="wait_for_element")
@@ -271,8 +284,10 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
         tab_id: str | None = None,
         timeout_s: float = 10.0,
     ) -> dict[str, Any]:
+        """Wait up to timeout_s seconds for an element matching the CSS selector to appear in the DOM. Use this before interacting with elements that load asynchronously."""
         return handlers["wait_for_element"](selector, session_id, tab_id, timeout_s)
 
     @mcp.tool(name="wait_time")
     def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Pause execution for a fixed number of seconds. Prefer wait_for_element when possible; use this only when a timed delay is unavoidable (e.g., waiting for an animation or a rate limit)."""
         return handlers["wait_time"](seconds, session_id, tab_id)

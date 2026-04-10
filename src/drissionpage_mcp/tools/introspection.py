@@ -87,12 +87,15 @@ def register_introspection_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
 
     @mcp.tool(name="server_get_capabilities")
     def server_get_capabilities() -> dict[str, Any]:
+        """List all tools available on this MCP server along with the server version and transport. Call this first to discover what actions are supported before planning a task."""
         return handlers["server_get_capabilities"]()
 
     @mcp.tool(name="server_get_policy")
     def server_get_policy() -> dict[str, Any]:
+        """Return the active safety policy settings, including allowed domains, timeout limits, and which capabilities (JS execution, file upload, downloads) are enabled or restricted."""
         return handlers["server_get_policy"]()
 
     @mcp.tool(name="browser_get_state")
     def browser_get_state(session_id: str | None = None) -> dict[str, Any]:
+        """Return the current state of a browser session: session ID, mode, active tab, and a list of all open tabs with their URLs and titles. Use this to orient yourself before navigating or to verify which tab is active."""
         return handlers["browser_get_state"](session_id)
