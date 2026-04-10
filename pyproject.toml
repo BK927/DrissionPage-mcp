@@ -27,6 +27,7 @@ drissionpage-mcp = "drissionpage_mcp.server:main"
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["e2e: tests that require a real browser and a running local HTTP server"]
 
 [tool.ruff]
 line-length = 100

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,7 +15,7 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 
 @pytest.fixture(scope="session")
-def live_site_url() -> str:
+def live_site_url() -> Iterator[str]:
     site_root = Path(__file__).parent / "site"
     handler = partial(QuietHandler, directory=str(site_root))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
