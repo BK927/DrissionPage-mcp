@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from uuid import uuid4
 
@@ -7,6 +8,8 @@ from drissionpage_mcp.config import BrowserConfig
 from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.models import SessionMode
 from drissionpage_mcp.services.browser_session import BrowserSession
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserRegistry:
@@ -40,6 +43,7 @@ class BrowserRegistry:
             adapter=self._adapter_factory(mode),
         )
         self._sessions[session_id] = session
+        logger.info("session_created session_id=%s mode=%s", session_id, mode)
         return session
 
     def get_session(self, session_id: str | None = None) -> BrowserSession:
@@ -68,12 +72,14 @@ class BrowserRegistry:
         except ToolError:
             raise
         except Exception as error:
+            logger.warning("session_close_failed session_id=%s error=%s", session_id, error)
             raise ToolError(
                 code=ErrorCode.BROWSER_CLOSE_FAILED,
                 message=f"Unable to close session '{session_id}': {error}",
                 context={"session_id": session_id},
             ) from error
         del self._sessions[session_id]
+        logger.info("session_closed session_id=%s", session_id)
 
     def all_sessions(self) -> list[BrowserSession]:
         if self._browser_config.persistent_on_startup and "default" not in self._sessions:

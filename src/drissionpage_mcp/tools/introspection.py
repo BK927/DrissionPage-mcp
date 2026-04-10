@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -8,6 +9,8 @@ from mcp.server.fastmcp import FastMCP
 from drissionpage_mcp.dependencies import ToolDependencies
 from drissionpage_mcp.errors import ToolError
 from drissionpage_mcp.tools.core import CORE_TOOL_NAMES
+
+logger = logging.getLogger(__name__)
 
 
 INTROSPECTION_TOOL_NAMES = (
@@ -61,11 +64,14 @@ def build_introspection_handlers(deps: ToolDependencies) -> dict[str, Callable[.
         }
 
     def browser_get_state(session_id: str | None = None) -> dict[str, Any]:
+        logger.info("tool_start tool=browser_get_state")
         try:
             session = deps.registry.get_session(session_id)
             state = session.adapter.state(session.session_id)
         except ToolError as error:
+            logger.warning("tool_error tool=browser_get_state code=%s message=%s", error.code, error.message)
             return _error_payload(error)
+        logger.info("tool_complete tool=browser_get_state session_id=%s", state.session_id)
         return {
             "ok": True,
             "message": "Browser state fetched.",

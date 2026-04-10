@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -7,6 +8,8 @@ from mcp.server.fastmcp import FastMCP
 
 from drissionpage_mcp.dependencies import ToolDependencies
 from drissionpage_mcp.errors import ToolError
+
+logger = logging.getLogger(__name__)
 
 
 CORE_TOOL_NAMES = (
@@ -38,11 +41,20 @@ def _error_payload(error: ToolError) -> dict[str, Any]:
     }
 
 
-def _handle_errors(callback: Callable[..., Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+def _handle_errors(tool_name: str, callback: Callable[..., Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    logger.info("tool_start tool=%s", tool_name)
     try:
         result = callback(*args, **kwargs)
+        logger.info(
+            "tool_complete tool=%s elapsed_ms=%s session_id=%s tab_id=%s",
+            tool_name,
+            result.elapsed_ms,
+            result.session_id,
+            result.tab_id,
+        )
         return result.to_dict()
     except ToolError as error:
+        logger.warning("tool_error tool=%s code=%s message=%s", tool_name, error.code, error.message)
         return _error_payload(error)
 
 
@@ -69,49 +81,49 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
             session = deps.registry.get_session(session_id)
             return deps.page_service.navigate(session, url, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_navigate", action)
 
     def page_refresh(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.refresh(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_refresh", action)
 
     def page_go_back(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.go_back(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_go_back", action)
 
     def page_go_forward(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.go_forward(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_go_forward", action)
 
     def page_get_url(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_url(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_get_url", action)
 
     def page_get_html(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_html(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_get_html", action)
 
     def page_get_text(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_text(session, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("page_get_text", action)
 
     def page_screenshot(
         session_id: str | None = None,
@@ -130,21 +142,21 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
                 full_page=full_page,
             )
 
-        return _handle_errors(action)
+        return _handle_errors("page_screenshot", action)
 
     def element_find(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.find(session, selector, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("element_find", action)
 
     def element_click(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.click(session, selector, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("element_click", action)
 
     def element_type(
         selector: str,
@@ -157,7 +169,7 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
             session = deps.registry.get_session(session_id)
             return deps.page_service.type_text(session, selector, text, clear=clear, tab_id=tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("element_type", action)
 
     def wait_for_element(
         selector: str,
@@ -169,14 +181,14 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
             session = deps.registry.get_session(session_id)
             return deps.page_service.wait_for_element(session, selector, timeout_s=timeout_s, tab_id=tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("wait_for_element", action)
 
     def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
         def action() -> Any:
             session = deps.registry.get_session(session_id)
             return deps.page_service.wait_time(session, seconds, tab_id)
 
-        return _handle_errors(action)
+        return _handle_errors("wait_time", action)
 
     return {
         "session_create": session_create,
