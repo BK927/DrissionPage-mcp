@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+
+from drissionpage_mcp.dependencies import ToolDependencies
+from drissionpage_mcp.errors import ToolError
+
+logger = logging.getLogger(__name__)
+
+
+CORE_TOOL_NAMES = (
+    "session_create",
+    "session_close",
+    "page_navigate",
+    "page_refresh",
+    "page_go_back",
+    "page_go_forward",
+    "page_get_url",
+    "page_get_html",
+    "page_get_text",
+    "page_screenshot",
+    "element_find",
+    "element_click",
+    "element_type",
+    "wait_for_element",
+    "wait_time",
+)
+
+
+def _error_payload(error: ToolError) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error_code": error.code.value,
+        "message": error.message,
+        "retryable": error.retryable,
+        **error.context,
+    }
+
+
+def _handle_errors(tool_name: str, callback: Callable[..., Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    logger.info("tool_start tool=%s", tool_name)
+    try:
+        result = callback(*args, **kwargs)
+        logger.info(
+            "tool_complete tool=%s elapsed_ms=%s session_id=%s tab_id=%s",
+            tool_name,
+            result.elapsed_ms,
+            result.session_id,
+            result.tab_id,
+        )
+        return result.to_dict()
+    except ToolError as error:
+        logger.warning("tool_error tool=%s code=%s message=%s", tool_name, error.code, error.message)
+        return _error_payload(error)
+
+
+def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[str, Any]]]:
+    def session_create(mode: str = "ephemeral") -> dict[str, Any]:
+        session = deps.registry.create_session(mode)
+        return {
+            "ok": True,
+            "message": "Created session.",
+            "session_id": session.session_id,
+            "mode": session.mode,
+        }
+
+    def session_close(session_id: str) -> dict[str, Any]:
+        try:
+            deps.registry.close_session(session_id)
+        except ToolError as error:
+            return _error_payload(error)
+        return {"ok": True, "message": "Closed session.", "session_id": session_id}
+
+    def page_navigate(url: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            deps.policy.require_url_allowed(url)
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.navigate(session, url, tab_id)
+
+        return _handle_errors("page_navigate", action)
+
+    def page_refresh(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.refresh(session, tab_id)
+
+        return _handle_errors("page_refresh", action)
+
+    def page_go_back(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.go_back(session, tab_id)
+
+        return _handle_errors("page_go_back", action)
+
+    def page_go_forward(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.go_forward(session, tab_id)
+
+        return _handle_errors("page_go_forward", action)
+
+    def page_get_url(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.get_url(session, tab_id)
+
+        return _handle_errors("page_get_url", action)
+
+    def page_get_html(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.get_html(session, tab_id)
+
+        return _handle_errors("page_get_html", action)
+
+    def page_get_text(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.get_text(session, tab_id)
+
+        return _handle_errors("page_get_text", action)
+
+    def page_screenshot(
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        output_path: str = "screenshots",
+        file_name: str = "page.png",
+        full_page: bool = False,
+    ) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.screenshot(
+                session,
+                tab_id,
+                output_path=output_path,
+                file_name=file_name,
+                full_page=full_page,
+            )
+
+        return _handle_errors("page_screenshot", action)
+
+    def element_find(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.find(session, selector, tab_id)
+
+        return _handle_errors("element_find", action)
+
+    def element_click(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.click(session, selector, tab_id)
+
+        return _handle_errors("element_click", action)
+
+    def element_type(
+        selector: str,
+        text: str,
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.type_text(session, selector, text, clear=clear, tab_id=tab_id)
+
+        return _handle_errors("element_type", action)
+
+    def wait_for_element(
+        selector: str,
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        timeout_s: float = 10.0,
+    ) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.wait_for_element(session, selector, timeout_s=timeout_s, tab_id=tab_id)
+
+        return _handle_errors("wait_for_element", action)
+
+    def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        def action() -> Any:
+            session = deps.registry.get_session(session_id)
+            return deps.page_service.wait_time(session, seconds, tab_id)
+
+        return _handle_errors("wait_time", action)
+
+    return {
+        "session_create": session_create,
+        "session_close": session_close,
+        "page_navigate": page_navigate,
+        "page_refresh": page_refresh,
+        "page_go_back": page_go_back,
+        "page_go_forward": page_go_forward,
+        "page_get_url": page_get_url,
+        "page_get_html": page_get_html,
+        "page_get_text": page_get_text,
+        "page_screenshot": page_screenshot,
+        "element_find": element_find,
+        "element_click": element_click,
+        "element_type": element_type,
+        "wait_for_element": wait_for_element,
+        "wait_time": wait_time,
+    }
+
+
+def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
+    handlers = build_core_handlers(deps)
+
+    @mcp.tool(name="session_create")
+    def session_create(mode: str = "ephemeral") -> dict[str, Any]:
+        """Create a new browser session and return its session_id. Use mode='ephemeral' for a temporary session that is discarded on close, or mode='persistent' to reuse a named profile across calls."""
+        return handlers["session_create"](mode)
+
+    @mcp.tool(name="session_close")
+    def session_close(session_id: str) -> dict[str, Any]:
+        """Close a non-default browser session identified by session_id, releasing its resources. The default session cannot be closed with this tool."""
+        return handlers["session_close"](session_id)
+
+    @mcp.tool(name="page_navigate")
+    def page_navigate(url: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate the browser to the given URL and return the final URL after any redirects. The URL must be permitted by the server's safety policy."""
+        return handlers["page_navigate"](url, session_id, tab_id)
+
+    @mcp.tool(name="page_refresh")
+    def page_refresh(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Reload the current page, equivalent to pressing F5. Use this to re-fetch content after a server-side change or to recover from a stale page state."""
+        return handlers["page_refresh"](session_id, tab_id)
+
+    @mcp.tool(name="page_go_back")
+    def page_go_back(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate one step back in the browser's history, equivalent to clicking the Back button. Returns an error if there is no previous page."""
+        return handlers["page_go_back"](session_id, tab_id)
+
+    @mcp.tool(name="page_go_forward")
+    def page_go_forward(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Navigate one step forward in the browser's history, equivalent to clicking the Forward button. Returns an error if there is no next page."""
+        return handlers["page_go_forward"](session_id, tab_id)
+
+    @mcp.tool(name="page_get_url")
+    def page_get_url(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the current URL of the active tab. Use this to confirm navigation completed or to capture the final URL after redirects."""
+        return handlers["page_get_url"](session_id, tab_id)
+
+    @mcp.tool(name="page_get_html")
+    def page_get_html(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the full HTML source of the current page. Use this when you need the raw markup for parsing, scraping, or inspecting element structure."""
+        return handlers["page_get_html"](session_id, tab_id)
+
+    @mcp.tool(name="page_get_text")
+    def page_get_text(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Return the visible text content of the current page, stripped of HTML tags. Prefer this over page_get_html when you only need readable text, not markup."""
+        return handlers["page_get_text"](session_id, tab_id)
+
+    @mcp.tool(name="page_screenshot")
+    def page_screenshot(
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        output_path: str = "screenshots",
+        file_name: str = "page.png",
+        full_page: bool = False,
+    ) -> dict[str, Any]:
+        """Capture a screenshot of the current page and save it to disk. Set full_page=True to capture the entire scrollable page rather than just the visible viewport."""
+        return handlers["page_screenshot"](session_id, tab_id, output_path, file_name, full_page)
+
+    @mcp.tool(name="element_find")
+    def element_find(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Find a DOM element using a CSS selector and return its tag, text, attributes, and position. Use this to inspect an element before deciding whether to click or type into it."""
+        return handlers["element_find"](selector, session_id, tab_id)
+
+    @mcp.tool(name="element_click")
+    def element_click(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Click the first element matching the given CSS selector. Use wait_for_element first if the element may not be present yet."""
+        return handlers["element_click"](selector, session_id, tab_id)
+
+    @mcp.tool(name="element_type")
+    def element_type(
+        selector: str,
+        text: str,
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        """Type text into the input or textarea element matching the CSS selector. Set clear=True to erase existing content before typing; defaults to appending."""
+        return handlers["element_type"](selector, text, session_id, tab_id, clear)
+
+    @mcp.tool(name="wait_for_element")
+    def wait_for_element(
+        selector: str,
+        session_id: str | None = None,
+        tab_id: str | None = None,
+        timeout_s: float = 10.0,
+    ) -> dict[str, Any]:
+        """Wait up to timeout_s seconds for an element matching the CSS selector to appear in the DOM. Use this before interacting with elements that load asynchronously."""
+        return handlers["wait_for_element"](selector, session_id, tab_id, timeout_s)
+
+    @mcp.tool(name="wait_time")
+    def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
+        """Pause execution for a fixed number of seconds. Prefer wait_for_element when possible; use this only when a timed delay is unavoidable (e.g., waiting for an animation or a rate limit)."""
+        return handlers["wait_time"](seconds, session_id, tab_id)

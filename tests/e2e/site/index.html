@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>DrissionPage MCP Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>DrissionPage MCP Fixture</h1>
+      <label for="name">Name</label>
+      <input id="name" type="text" />
+      <button id="echo" type="button">Echo</button>
+      <p id="result"></p>
+    </main>
+    <script>
+      const button = document.getElementById("echo");
+      const input = document.getElementById("name");
+      const result = document.getElementById("result");
+      button.addEventListener("click", () => {
+        result.textContent = input.value;
+      });
+    </script>
+  </body>
+</html>
