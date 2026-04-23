@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+import sys
+
 from mcp.server.fastmcp import FastMCP
 
-from drissionpage_mcp.config import ServerConfig, load_config
+from drissionpage_mcp.config import ConfigError, ServerConfig, load_config
 from drissionpage_mcp.dependencies import ToolDependencies, build_dependencies
 from drissionpage_mcp.tools.core import register_core_tools
 from drissionpage_mcp.tools.introspection import register_introspection_tools
@@ -26,7 +29,16 @@ def create_server(config_path: str | None = None) -> FastMCP:
 
 
 def main() -> None:
-    config = load_config(None)
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    try:
+        config = load_config(None)
+    except ConfigError as error:
+        print(f"drissionpage-mcp: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
     server, deps = build_server(config)
     try:
         server.run()

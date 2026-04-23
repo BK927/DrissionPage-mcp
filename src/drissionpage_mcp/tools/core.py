@@ -32,16 +32,6 @@ CORE_TOOL_NAMES = (
 )
 
 
-def _error_payload(error: ToolError) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "error_code": error.code.value,
-        "message": error.message,
-        "retryable": error.retryable,
-        **error.context,
-    }
-
-
 def _handle_tool_errors(
     tool_name: str, callback: Callable[[], dict[str, Any]]
 ) -> dict[str, Any]:
@@ -50,7 +40,7 @@ def _handle_tool_errors(
         result = callback()
     except ToolError as error:
         logger.warning("tool_error tool=%s code=%s message=%s", tool_name, error.code, error.message)
-        return _error_payload(error)
+        return error.to_payload()
     logger.info("tool_complete tool=%s", tool_name)
     return result
 
@@ -71,7 +61,7 @@ def _handle_result(
         return result.to_dict()
     except ToolError as error:
         logger.warning("tool_error tool=%s code=%s message=%s", tool_name, error.code, error.message)
-        return _error_payload(error)
+        return error.to_payload()
 
 
 def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[str, Any]]]:

@@ -184,6 +184,15 @@ def test_wait_time_rejects_value_exceeding_max() -> None:
     assert result["error_code"] == "INVALID_ARGUMENT"
 
 
+def test_wait_time_rejects_boolean_value() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["wait_time"](True)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+
+
 def test_wait_for_element_rejects_value_exceeding_max() -> None:
     handlers = build_core_handlers(build_dependencies())
 

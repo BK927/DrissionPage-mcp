@@ -59,6 +59,15 @@ class PageService:
             ) from error
         return resolved
 
+    def _validate_screenshot_file_name(self, file_name: str) -> str:
+        if not file_name or Path(file_name).name != file_name:
+            raise ToolError(
+                code=ErrorCode.INVALID_ARGUMENT,
+                message="file_name must be a single file name without path separators.",
+                context={"file_name": file_name},
+            )
+        return file_name
+
     def navigate(self, session: BrowserSession, url: str, tab_id: str | None = None) -> ToolResult:
         start = time.perf_counter()
         page = self._page(session, tab_id)
@@ -112,8 +121,9 @@ class PageService:
     ) -> ToolResult:
         start = time.perf_counter()
         target_dir = self._resolve_screenshot_dir(output_path)
+        safe_file_name = self._validate_screenshot_file_name(file_name)
         target_dir.mkdir(parents=True, exist_ok=True)
-        path = self._page(session, tab_id).screenshot(str(target_dir), file_name, full_page)
+        path = self._page(session, tab_id).screenshot(str(target_dir), safe_file_name, full_page)
         return self._result(start, "Saved screenshot.", session, tab_id=tab_id, screenshot_path=path)
 
     def find(self, session: BrowserSession, selector: str, tab_id: str | None = None) -> ToolResult:

@@ -20,16 +20,6 @@ INTROSPECTION_TOOL_NAMES = (
 )
 
 
-def _error_payload(error: ToolError) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "error_code": error.code.value,
-        "message": error.message,
-        "retryable": error.retryable,
-        **error.context,
-    }
-
-
 def build_introspection_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[str, Any]]]:
     def server_get_capabilities() -> dict[str, Any]:
         return {
@@ -69,7 +59,7 @@ def build_introspection_handlers(deps: ToolDependencies) -> dict[str, Callable[.
             state = session.adapter.state(session.session_id)
         except ToolError as error:
             logger.warning("tool_error tool=browser_get_state code=%s message=%s", error.code, error.message)
-            return _error_payload(error)
+            return error.to_payload()
         logger.info("tool_complete tool=browser_get_state session_id=%s", state.session_id)
         return {
             "ok": True,

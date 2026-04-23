@@ -26,3 +26,12 @@ class ToolError(Exception):
 
     def __str__(self) -> str:
         return f"{self.code}: {self.message}"
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "ok": False,
+            "error_code": self.code.value,
+            "message": self.message,
+            "retryable": self.retryable,
+            **self.context,
+        }

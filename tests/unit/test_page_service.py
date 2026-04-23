@@ -427,6 +427,27 @@ def test_page_service_screenshot_rejects_parent_escape(tmp_path: Path) -> None:
     assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
 
 
+def test_page_service_screenshot_rejects_path_separator_in_file_name(tmp_path: Path) -> None:
+    session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
+    service = PageService(tmp_path)
+
+    with pytest.raises(ToolError) as error_info:
+        service.screenshot(session, output_path="shots", file_name="../escape.png")
+
+    assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
+    assert error_info.value.context == {"file_name": "../escape.png"}
+
+
+def test_page_service_screenshot_rejects_empty_file_name(tmp_path: Path) -> None:
+    session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
+    service = PageService(tmp_path)
+
+    with pytest.raises(ToolError) as error_info:
+        service.screenshot(session, output_path="shots", file_name="")
+
+    assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
+
+
 def test_drission_page_adapter_wait_for_element_delegates_timeout_to_lookup() -> None:
     page = FakeRawPage({"#echo": [FakeElementAdapter(FakePageAdapter())]})
     adapter = DrissionPageAdapter(page)
