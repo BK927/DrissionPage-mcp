@@ -20,7 +20,7 @@ def test_local_page_flow(live_site_url: str, tmp_path: Path) -> None:
     type_text = handlers["element_type"]("#name", "Codex", None, None, True)
     click = handlers["element_click"]("#echo")
     text = handlers["page_get_text"]()
-    screenshot = handlers["page_screenshot"](None, None, str(tmp_path), "page.png", False)
+    screenshot = handlers["page_screenshot"](None, None, "shots", "page.png", False)
 
     assert navigate["ok"] is True
     assert type_text["ok"] is True

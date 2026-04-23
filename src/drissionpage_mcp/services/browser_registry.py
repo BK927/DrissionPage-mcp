@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import get_args
 from uuid import uuid4
 
 from drissionpage_mcp.config import BrowserConfig
 from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.models import SessionMode
-from drissionpage_mcp.services.browser_session import BrowserSession
+from drissionpage_mcp.services.browser_session import BrowserAdapter, BrowserSession
 
 logger = logging.getLogger(__name__)
+
+_VALID_SESSION_MODES: frozenset[str] = frozenset(get_args(SessionMode))
 
 
 class BrowserRegistry:
     def __init__(
         self,
-        adapter_factory: Callable[[SessionMode], object],
+        adapter_factory: Callable[[SessionMode], BrowserAdapter],
         browser_config: BrowserConfig,
     ) -> None:
         self._adapter_factory = adapter_factory
@@ -36,6 +39,15 @@ class BrowserRegistry:
         return session
 
     def create_session(self, mode: SessionMode = "ephemeral") -> BrowserSession:
+        if mode not in _VALID_SESSION_MODES:
+            raise ToolError(
+                code=ErrorCode.INVALID_ARGUMENT,
+                message=(
+                    f"Unknown session mode '{mode}'. "
+                    f"Expected one of: {sorted(_VALID_SESSION_MODES)}."
+                ),
+                context={"mode": mode},
+            )
         session_id = f"session-{uuid4().hex[:8]}"
         session = BrowserSession(
             session_id=session_id,
@@ -49,6 +61,18 @@ class BrowserRegistry:
     def get_session(self, session_id: str | None = None) -> BrowserSession:
         key = session_id or "default"
         if key == "default":
+            if (
+                not self._browser_config.persistent_on_startup
+                and "default" not in self._sessions
+            ):
+                raise ToolError(
+                    code=ErrorCode.SESSION_NOT_FOUND,
+                    message=(
+                        "No default session available. Provide a session_id or enable "
+                        "browser.persistent_on_startup in config."
+                    ),
+                    context={"session_id": session_id},
+                )
             return self.ensure_default_session()
         if key not in self._sessions:
             raise ToolError(
@@ -80,6 +104,19 @@ class BrowserRegistry:
             ) from error
         del self._sessions[session_id]
         logger.info("session_closed session_id=%s", session_id)
+
+    def close_all(self) -> None:
+        for session_id in list(self._sessions):
+            session = self._sessions[session_id]
+            try:
+                session.adapter.close()
+            except Exception as error:
+                logger.warning(
+                    "session_close_failed session_id=%s error=%s", session_id, error
+                )
+            else:
+                logger.info("session_closed session_id=%s", session_id)
+            del self._sessions[session_id]
 
     def all_sessions(self) -> list[BrowserSession]:
         if self._browser_config.persistent_on_startup and "default" not in self._sessions:

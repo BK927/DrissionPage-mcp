@@ -94,6 +94,64 @@ def test_registry_all_sessions_creates_default_when_persistent_startup_enabled()
     assert sessions[0].is_default is True
 
 
+def test_registry_rejects_unknown_session_mode() -> None:
+    registry = BrowserRegistry(lambda mode: FakeAdapter(mode), BrowserConfig())
+
+    with pytest.raises(ToolError) as error_info:
+        registry.create_session("super-persistent")  # type: ignore[arg-type]
+
+    assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
+    assert error_info.value.context == {"mode": "super-persistent"}
+
+
+def test_registry_refuses_default_session_when_persistent_startup_disabled() -> None:
+    registry = BrowserRegistry(
+        lambda mode: FakeAdapter(mode),
+        BrowserConfig(persistent_on_startup=False),
+    )
+
+    with pytest.raises(ToolError) as error_info:
+        registry.get_session(None)
+
+    assert error_info.value.code is ErrorCode.SESSION_NOT_FOUND
+
+
+def test_registry_uses_existing_default_when_already_created() -> None:
+    registry = BrowserRegistry(
+        lambda mode: FakeAdapter(mode),
+        BrowserConfig(persistent_on_startup=False),
+    )
+    default = registry.ensure_default_session()
+
+    retrieved = registry.get_session(None)
+
+    assert retrieved is default
+
+
+def test_registry_close_all_closes_every_session_including_default() -> None:
+    registry = BrowserRegistry(lambda mode: FakeAdapter(mode), BrowserConfig())
+    default = registry.ensure_default_session()
+    ephemeral = registry.create_session("ephemeral")
+
+    registry.close_all()
+
+    assert default.adapter.closed is True
+    assert ephemeral.adapter.closed is True
+    assert registry._sessions == {}  # noqa: SLF001
+
+
+def test_registry_close_all_continues_when_one_session_raises() -> None:
+    registry = BrowserRegistry(lambda mode: FakeAdapter(mode), BrowserConfig())
+    default = registry.ensure_default_session()
+    ephemeral = registry.create_session("ephemeral")
+    default.adapter.close_error = RuntimeError("default boom")
+
+    registry.close_all()
+
+    assert ephemeral.adapter.closed is True
+    assert registry._sessions == {}  # noqa: SLF001
+
+
 class FakeTab:
     def __init__(self, tab_id: str, title: str, url: str) -> None:
         self.tab_id = tab_id

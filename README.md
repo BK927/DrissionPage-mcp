@@ -25,10 +25,9 @@ server_name = "DrissionPage MCP"
 mode = "safe"
 allow_run_js = false
 allow_browser_attach = false
-allow_file_upload = false
-allow_download = true
 download_dir = "./downloads"
 default_timeout_ms = 10000
+max_wait_time_s = 60.0
 
 [browser]
 persistent_on_startup = true

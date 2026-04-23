@@ -7,7 +7,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from drissionpage_mcp.dependencies import ToolDependencies
-from drissionpage_mcp.errors import ToolError
+from drissionpage_mcp.errors import ErrorCode, ToolError
+from drissionpage_mcp.models import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,22 @@ def _error_payload(error: ToolError) -> dict[str, Any]:
     }
 
 
-def _handle_errors(tool_name: str, callback: Callable[..., Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+def _handle_tool_errors(
+    tool_name: str, callback: Callable[[], dict[str, Any]]
+) -> dict[str, Any]:
+    logger.info("tool_start tool=%s", tool_name)
+    try:
+        result = callback()
+    except ToolError as error:
+        logger.warning("tool_error tool=%s code=%s message=%s", tool_name, error.code, error.message)
+        return _error_payload(error)
+    logger.info("tool_complete tool=%s", tool_name)
+    return result
+
+
+def _handle_result(
+    tool_name: str, callback: Callable[..., ToolResult], *args: Any, **kwargs: Any
+) -> dict[str, Any]:
     logger.info("tool_start tool=%s", tool_name)
     try:
         result = callback(*args, **kwargs)
@@ -59,71 +75,80 @@ def _handle_errors(tool_name: str, callback: Callable[..., Any], *args: Any, **k
 
 
 def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[str, Any]]]:
+    max_wait_time_s = deps.config.safety.max_wait_time_s
+
     def session_create(mode: str = "ephemeral") -> dict[str, Any]:
-        session = deps.registry.create_session(mode)
-        return {
-            "ok": True,
-            "message": "Created session.",
-            "session_id": session.session_id,
-            "mode": session.mode,
-        }
+        def action() -> dict[str, Any]:
+            session = deps.registry.create_session(mode)
+            return {
+                "ok": True,
+                "message": "Created session.",
+                "session_id": session.session_id,
+                "mode": session.mode,
+            }
+
+        return _handle_tool_errors("session_create", action)
 
     def session_close(session_id: str) -> dict[str, Any]:
-        try:
+        def action() -> dict[str, Any]:
             deps.registry.close_session(session_id)
-        except ToolError as error:
-            return _error_payload(error)
-        return {"ok": True, "message": "Closed session.", "session_id": session_id}
+            return {
+                "ok": True,
+                "message": "Closed session.",
+                "session_id": session_id,
+            }
+
+        return _handle_tool_errors("session_close", action)
 
     def page_navigate(url: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             deps.policy.require_url_allowed(url)
             session = deps.registry.get_session(session_id)
             return deps.page_service.navigate(session, url, tab_id)
 
-        return _handle_errors("page_navigate", action)
+        return _handle_result("page_navigate", action)
 
     def page_refresh(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.refresh(session, tab_id)
 
-        return _handle_errors("page_refresh", action)
+        return _handle_result("page_refresh", action)
 
     def page_go_back(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.go_back(session, tab_id)
 
-        return _handle_errors("page_go_back", action)
+        return _handle_result("page_go_back", action)
 
     def page_go_forward(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.go_forward(session, tab_id)
 
-        return _handle_errors("page_go_forward", action)
+        return _handle_result("page_go_forward", action)
 
     def page_get_url(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_url(session, tab_id)
 
-        return _handle_errors("page_get_url", action)
+        return _handle_result("page_get_url", action)
 
     def page_get_html(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_html(session, tab_id)
 
-        return _handle_errors("page_get_html", action)
+        return _handle_result("page_get_html", action)
 
     def page_get_text(session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.get_text(session, tab_id)
 
-        return _handle_errors("page_get_text", action)
+        return _handle_result("page_get_text", action)
 
     def page_screenshot(
         session_id: str | None = None,
@@ -132,7 +157,7 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
         file_name: str = "page.png",
         full_page: bool = False,
     ) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.screenshot(
                 session,
@@ -142,21 +167,21 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
                 full_page=full_page,
             )
 
-        return _handle_errors("page_screenshot", action)
+        return _handle_result("page_screenshot", action)
 
     def element_find(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.find(session, selector, tab_id)
 
-        return _handle_errors("element_find", action)
+        return _handle_result("element_find", action)
 
     def element_click(selector: str, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.click(session, selector, tab_id)
 
-        return _handle_errors("element_click", action)
+        return _handle_result("element_click", action)
 
     def element_type(
         selector: str,
@@ -165,11 +190,11 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
         tab_id: str | None = None,
         clear: bool = False,
     ) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
             session = deps.registry.get_session(session_id)
             return deps.page_service.type_text(session, selector, text, clear=clear, tab_id=tab_id)
 
-        return _handle_errors("element_type", action)
+        return _handle_result("element_type", action)
 
     def wait_for_element(
         selector: str,
@@ -177,18 +202,20 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
         tab_id: str | None = None,
         timeout_s: float = 10.0,
     ) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
+            _check_wait_bounds("timeout_s", timeout_s, max_wait_time_s)
             session = deps.registry.get_session(session_id)
             return deps.page_service.wait_for_element(session, selector, timeout_s=timeout_s, tab_id=tab_id)
 
-        return _handle_errors("wait_for_element", action)
+        return _handle_result("wait_for_element", action)
 
     def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        def action() -> Any:
+        def action() -> ToolResult:
+            _check_wait_bounds("seconds", seconds, max_wait_time_s)
             session = deps.registry.get_session(session_id)
             return deps.page_service.wait_time(session, seconds, tab_id)
 
-        return _handle_errors("wait_time", action)
+        return _handle_result("wait_time", action)
 
     return {
         "session_create": session_create,
@@ -207,6 +234,27 @@ def build_core_handlers(deps: ToolDependencies) -> dict[str, Callable[..., dict[
         "wait_for_element": wait_for_element,
         "wait_time": wait_time,
     }
+
+
+def _check_wait_bounds(field_name: str, value: float, upper: float) -> None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ToolError(
+            code=ErrorCode.INVALID_ARGUMENT,
+            message=f"{field_name} must be a number.",
+            context={field_name: value},
+        )
+    if value < 0:
+        raise ToolError(
+            code=ErrorCode.INVALID_ARGUMENT,
+            message=f"{field_name} must be non-negative.",
+            context={field_name: value},
+        )
+    if value > upper:
+        raise ToolError(
+            code=ErrorCode.INVALID_ARGUMENT,
+            message=f"{field_name} exceeds max_wait_time_s ({upper}).",
+            context={field_name: value, "max_wait_time_s": upper},
+        )
 
 
 def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
@@ -265,7 +313,7 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
         file_name: str = "page.png",
         full_page: bool = False,
     ) -> dict[str, Any]:
-        """Capture a screenshot of the current page and save it to disk. Set full_page=True to capture the entire scrollable page rather than just the visible viewport."""
+        """Capture a screenshot of the current page and save it under download_dir/output_path. output_path must be a relative subpath; absolute paths or '..' escapes are rejected."""
         return handlers["page_screenshot"](session_id, tab_id, output_path, file_name, full_page)
 
     @mcp.tool(name="element_find")
@@ -296,10 +344,10 @@ def register_core_tools(mcp: FastMCP, deps: ToolDependencies) -> None:
         tab_id: str | None = None,
         timeout_s: float = 10.0,
     ) -> dict[str, Any]:
-        """Wait up to timeout_s seconds for an element matching the CSS selector to appear in the DOM. Use this before interacting with elements that load asynchronously."""
+        """Wait up to timeout_s seconds for an element matching the CSS selector to appear in the DOM. timeout_s must be between 0 and safety.max_wait_time_s."""
         return handlers["wait_for_element"](selector, session_id, tab_id, timeout_s)
 
     @mcp.tool(name="wait_time")
     def wait_time(seconds: float, session_id: str | None = None, tab_id: str | None = None) -> dict[str, Any]:
-        """Pause execution for a fixed number of seconds. Prefer wait_for_element when possible; use this only when a timed delay is unavoidable (e.g., waiting for an animation or a rate limit)."""
+        """Pause execution for a fixed number of seconds. seconds must be between 0 and safety.max_wait_time_s. Prefer wait_for_element when possible."""
         return handlers["wait_time"](seconds, session_id, tab_id)

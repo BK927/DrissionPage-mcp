@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from drissionpage_mcp.config import load_config
+from drissionpage_mcp.config import ConfigError, load_config
 
 
 def test_load_config_returns_safe_defaults() -> None:
@@ -53,4 +53,63 @@ allow_run_js = "false"
     )
 
     with pytest.raises(TypeError, match="allow_run_js"):
+        load_config(config_path)
+
+
+def test_load_config_resolves_default_download_dir() -> None:
+    config = load_config(Path("missing-drissionpage-mcp.toml"))
+
+    resolved = Path(config.safety.download_dir)
+    assert resolved.is_absolute()
+
+
+def test_load_config_resolves_configured_download_dir(tmp_path: Path) -> None:
+    config_path = tmp_path / "drissionpage_mcp.toml"
+    config_path.write_text(
+        f"""
+[safety]
+download_dir = "{tmp_path.as_posix()}/shots"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert Path(config.safety.download_dir) == (tmp_path / "shots").resolve()
+
+
+def test_load_config_raises_config_error_for_malformed_toml(tmp_path: Path) -> None:
+    config_path = tmp_path / "drissionpage_mcp.toml"
+    config_path.write_text("this = is = not = toml", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Failed to parse config"):
+        load_config(config_path)
+
+
+def test_load_config_parses_max_wait_time(tmp_path: Path) -> None:
+    config_path = tmp_path / "drissionpage_mcp.toml"
+    config_path.write_text(
+        """
+[safety]
+max_wait_time_s = 5.5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.safety.max_wait_time_s == 5.5
+
+
+def test_load_config_rejects_non_positive_max_wait_time(tmp_path: Path) -> None:
+    config_path = tmp_path / "drissionpage_mcp.toml"
+    config_path.write_text(
+        """
+[safety]
+max_wait_time_s = 0
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="max_wait_time_s"):
         load_config(config_path)

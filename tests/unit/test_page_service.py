@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -207,7 +208,7 @@ class BrokenReadElement:
 
 def test_page_service_navigate_reports_actual_url_and_metadata() -> None:
     session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
-    service = PageService()
+    service = PageService(".")
 
     result = service.navigate(session, "https://example.com")
 
@@ -221,7 +222,7 @@ def test_page_service_navigate_reports_actual_url_and_metadata() -> None:
 
 def test_page_service_click_and_type_include_payload_fields() -> None:
     session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
-    service = PageService()
+    service = PageService(".")
 
     type_result = service.type_text(session, "#name", "Codex", clear=True)
     click_result = service.click(session, "#echo")
@@ -238,7 +239,7 @@ def test_page_service_click_and_type_include_payload_fields() -> None:
 
 def test_page_service_get_text_returns_text_payload() -> None:
     session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
-    service = PageService()
+    service = PageService(".")
 
     result = service.get_text(session)
 
@@ -249,7 +250,7 @@ def test_page_service_get_text_returns_text_payload() -> None:
 
 def test_page_service_missing_selector_raises_structured_tool_error() -> None:
     session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
-    service = PageService()
+    service = PageService(".")
 
     with pytest.raises(ToolError) as error_info:
         service.find(session, "#missing")
@@ -392,3 +393,53 @@ def test_drission_element_adapter_wraps_type_errors() -> None:
     assert error_info.value.code == ErrorCode.ACTION_TIMEOUT
     assert error_info.value.context["action"] == "type_text"
     assert error_info.value.context["clear"] is False
+
+
+def test_page_service_screenshot_writes_under_download_dir(tmp_path: Path) -> None:
+    session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
+    service = PageService(tmp_path)
+
+    result = service.screenshot(session, output_path="shots", file_name="page.png")
+
+    assert result.ok is True
+    expected_dir = (tmp_path / "shots").resolve()
+    assert expected_dir.is_dir()
+    assert result.data["screenshot_path"] == f"{expected_dir}/page.png"
+
+
+def test_page_service_screenshot_rejects_absolute_output_path(tmp_path: Path) -> None:
+    session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
+    service = PageService(tmp_path)
+
+    with pytest.raises(ToolError) as error_info:
+        service.screenshot(session, output_path=str(tmp_path / "escape"))
+
+    assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
+
+
+def test_page_service_screenshot_rejects_parent_escape(tmp_path: Path) -> None:
+    session = BrowserSession("default", "persistent", FakeBrowserAdapter(FakePageAdapter()), is_default=True)
+    service = PageService(tmp_path)
+
+    with pytest.raises(ToolError) as error_info:
+        service.screenshot(session, output_path="../outside")
+
+    assert error_info.value.code is ErrorCode.INVALID_ARGUMENT
+
+
+def test_drission_page_adapter_wait_for_element_delegates_timeout_to_lookup() -> None:
+    page = FakeRawPage({"#echo": [FakeElementAdapter(FakePageAdapter())]})
+    adapter = DrissionPageAdapter(page)
+
+    adapter.wait_for_element("#echo", timeout_s=3.5)
+
+    assert page.calls == [("#echo", 3.5)]
+
+
+def test_drission_page_adapter_wait_for_element_clamps_negative_timeout() -> None:
+    page = FakeRawPage({"#echo": [FakeElementAdapter(FakePageAdapter())]})
+    adapter = DrissionPageAdapter(page)
+
+    adapter.wait_for_element("#echo", timeout_s=-1)
+
+    assert page.calls == [("#echo", 0)]

@@ -56,10 +56,9 @@ def build_introspection_handlers(deps: ToolDependencies) -> dict[str, Callable[.
             "mode": safety.mode,
             "allow_run_js": safety.allow_run_js,
             "allow_browser_attach": safety.allow_browser_attach,
-            "allow_file_upload": safety.allow_file_upload,
-            "allow_download": safety.allow_download,
             "allowed_domains": list(safety.allowed_domains),
             "default_timeout_ms": safety.default_timeout_ms,
+            "max_wait_time_s": safety.max_wait_time_s,
             "download_dir": safety.download_dir,
         }
 

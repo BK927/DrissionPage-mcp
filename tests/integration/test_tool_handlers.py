@@ -90,7 +90,7 @@ def build_dependencies() -> ToolDependencies:
         config=config,
         policy=PolicyEngine(config.safety),
         registry=registry,
-        page_service=PageService(),
+        page_service=PageService("."),
     )
 
 
@@ -112,3 +112,91 @@ def test_introspection_reports_v0_capabilities() -> None:
     assert "page_navigate" in result["tools"]
     assert "server_get_policy" in result["tools"]
     assert "browser_attach" not in result["tools"]
+
+
+def test_introspection_policy_exposes_max_wait_time_without_removed_flags() -> None:
+    handlers = build_introspection_handlers(build_dependencies())
+
+    result = handlers["server_get_policy"]()
+
+    assert "max_wait_time_s" in result
+    assert "allow_file_upload" not in result
+    assert "allow_download" not in result
+
+
+def _dependencies_without_default() -> ToolDependencies:
+    config = ServerConfig(
+        safety=SafetyConfig(),
+        browser=BrowserConfig(persistent_on_startup=False),
+    )
+    registry = BrowserRegistry(lambda mode: FakeBrowser(), config.browser)
+    return ToolDependencies(
+        config=config,
+        policy=PolicyEngine(config.safety),
+        registry=registry,
+        page_service=PageService("."),
+    )
+
+
+def test_session_create_returns_structured_error_payload_for_invalid_mode() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["session_create"]("super-persistent")
+
+    assert result["ok"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["mode"] == "super-persistent"
+
+
+def test_session_close_returns_structured_error_payload_when_default() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["session_close"]("default")
+
+    assert result["ok"] is False
+    assert result["error_code"] == "UNSUPPORTED_OPERATION"
+
+
+def test_session_close_returns_structured_error_payload_when_missing() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["session_close"]("session-nope")
+
+    assert result["ok"] is False
+    assert result["error_code"] == "SESSION_NOT_FOUND"
+
+
+def test_wait_time_rejects_negative_value() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["wait_time"](-1)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+
+
+def test_wait_time_rejects_value_exceeding_max() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["wait_time"](9999)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+
+
+def test_wait_for_element_rejects_value_exceeding_max() -> None:
+    handlers = build_core_handlers(build_dependencies())
+
+    result = handlers["wait_for_element"]("#echo", None, None, 9999)
+
+    assert result["ok"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+
+
+def test_page_tool_errors_when_no_default_and_persistent_startup_disabled() -> None:
+    handlers = build_core_handlers(_dependencies_without_default())
+
+    result = handlers["page_get_url"]()
+
+    assert result["ok"] is False
+    assert result["error_code"] == "SESSION_NOT_FOUND"

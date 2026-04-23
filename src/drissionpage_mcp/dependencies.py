@@ -31,5 +31,5 @@ def build_dependencies(config: ServerConfig) -> ToolDependencies:
         config=config,
         policy=policy,
         registry=registry,
-        page_service=PageService(),
+        page_service=PageService(config.safety.download_dir),
     )

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from drissionpage_mcp.adapters.drission_element import DrissionElementAdapter
 from drissionpage_mcp.errors import ErrorCode, ToolError
 
@@ -123,14 +121,9 @@ class DrissionPageAdapter:
         return DrissionElementAdapter(element)
 
     def wait_for_element(self, selector: str, timeout_s: float) -> DrissionElementAdapter:
-        deadline = time.monotonic() + max(timeout_s, 0)
-        while True:
-            element = self._lookup(selector, timeout=0)
-            if element is not None:
-                return DrissionElementAdapter(element)
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        element = self._lookup(selector, timeout=max(timeout_s, 0))
+        if element is not None:
+            return DrissionElementAdapter(element)
         raise ToolError(
             code=ErrorCode.ACTION_TIMEOUT,
             message=f"Timed out waiting for selector: {selector}",

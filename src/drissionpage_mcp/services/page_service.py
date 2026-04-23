@@ -4,11 +4,15 @@ import time
 from pathlib import Path
 
 from drissionpage_mcp.adapters.drission_page import DrissionPageAdapter
+from drissionpage_mcp.errors import ErrorCode, ToolError
 from drissionpage_mcp.models import ToolResult
 from drissionpage_mcp.services.browser_session import BrowserSession
 
 
 class PageService:
+    def __init__(self, download_dir: str | Path) -> None:
+        self._download_dir = Path(download_dir).resolve()
+
     def _page(
         self,
         session: BrowserSession,
@@ -35,6 +39,25 @@ class PageService:
             elapsed_ms=int((time.perf_counter() - start) * 1000),
             data=data,
         )
+
+    def _resolve_screenshot_dir(self, output_path: str) -> Path:
+        candidate = Path(output_path)
+        if candidate.is_absolute():
+            raise ToolError(
+                code=ErrorCode.INVALID_ARGUMENT,
+                message="output_path must be relative to the configured download_dir.",
+                context={"output_path": output_path},
+            )
+        resolved = (self._download_dir / candidate).resolve()
+        try:
+            resolved.relative_to(self._download_dir)
+        except ValueError as error:
+            raise ToolError(
+                code=ErrorCode.INVALID_ARGUMENT,
+                message="output_path escapes the configured download_dir.",
+                context={"output_path": output_path},
+            ) from error
+        return resolved
 
     def navigate(self, session: BrowserSession, url: str, tab_id: str | None = None) -> ToolResult:
         start = time.perf_counter()
@@ -88,8 +111,9 @@ class PageService:
         full_page: bool = False,
     ) -> ToolResult:
         start = time.perf_counter()
-        Path(output_path).mkdir(parents=True, exist_ok=True)
-        path = self._page(session, tab_id).screenshot(output_path, file_name, full_page)
+        target_dir = self._resolve_screenshot_dir(output_path)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = self._page(session, tab_id).screenshot(str(target_dir), file_name, full_page)
         return self._result(start, "Saved screenshot.", session, tab_id=tab_id, screenshot_path=path)
 
     def find(self, session: BrowserSession, selector: str, tab_id: str | None = None) -> ToolResult:
